@@ -1,0 +1,2 @@
+rm result/*
+rm model/*
