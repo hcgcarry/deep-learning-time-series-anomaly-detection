@@ -18,6 +18,8 @@ import keras
 from keras.models import Sequential
 from keras.layers import Dense, Conv1D, Flatten, Activation, MaxPooling1D, Dropout
 from util import split_sequence
+from sklearn.metrics import explained_variance_score, mean_absolute_error, mean_squared_error, r2_score
+
 #from keras.optimizers import SGD
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -33,10 +35,11 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1" #model will be trained on GPU 1
 """Predicting random intervals (DeepAnT)"""
 # Build model 
 class testing:
-    def __init__(self,w ,p_w,n_features,kernel_size,num_filt_1,
+    def __init__(self,dataPath,w ,p_w,n_features,kernel_size,num_filt_1,
         num_filt_2,num_nrn_dl,num_nrn_ol,conv_strides ,
         pool_size_1,pool_size_2,pool_strides_1,pool_strides_2,epochs,dropout_rate,learning_rate,anm_det_thr ):
         """Hyperparameters"""
+        self.dataPath=dataPath
         self.w = w 
         self.p_w = p_w
         self.n_features = n_features           # Univariate time series
@@ -57,6 +60,7 @@ class testing:
         self.dropout_rate = dropout_rate      # Dropout rate in the fully connected layer
         self.learning_rate = learning_rate  
         self.anm_det_thr = anm_det_thr       # Threshold for classifying anomaly (0.5~0.8)
+        self.result_save_path = "result/"+self.dataPath.split('/')[-2]+"/"
 
     def run(self):
         self.loadData()
@@ -65,21 +69,17 @@ class testing:
 
     def loadData(self):
         """Data loading"""
-        df_sine = pd.read_csv('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
-        raw_seq_1 = list(df_sine['sinewave'])
-        raw_seq_2 = list(df_sine['sinewave'])
-        for i in range(len(raw_seq_2)):
-            raw_seq_2[(i+777)%len(raw_seq_2)]= raw_seq_1[i]
-        self.raw_seq = np.stack((raw_seq_1,raw_seq_2),axis=1)
+        df= pd.read_csv(self.dataPath)
+        self.raw_seq= df.to_numpy()
 
-        plt.figure(figsize=(100,10))
-        plt.plot(raw_seq_1)
-        plt.plot(raw_seq_2)
-        plt.title('sinewave')
-        plt.ylabel('value')
-        plt.xlabel('time')
-        plt.legend(['input_seq','shifted_input_seq'], loc='upper right')
-        plt.savefig("result/testcase.png")
+    def caculateMeanAndVariance(self):
+        mean = np.mean(self.raw_seq,0)
+        variance = np.std(self.raw_seq,0)
+        print("mean",mean  )
+        print("variance ",variance)
+        return (mean,variance)
+
+
     def loadModel(self):
         self.model = Sequential()
         self.model.add(Conv1D(filters=self.num_filt_1,
@@ -97,39 +97,74 @@ class testing:
         self.model.add(MaxPooling1D(pool_size=self.pool_size_2))
         self.model.add(Flatten())
         self.model.add(Dense(units=self.num_nrn_dl, activation='relu')) 
-        self.model.add(Dropout(self.dropout_rate))
+        self.model.add(Dropout(0))
         self.model.add(Dense(units=self.n_features))
 
         self.model.load_weights('model/sinwave_DeepAnT_1.h5')
     def predict(self):
+        mean,std= self.caculateMeanAndVariance()
         batch_sample, batch_label = split_sequence(self.raw_seq,self.w)
         # Predict the next time stampes of the sampled sequence
         predictResult= self.model.predict(batch_sample, verbose=1)
-
-        # Print our model's predictions.
-        print("predict:",predictResult)
-        print("predict:",predictResult.shape)
-
-        # Check our predictions against the ground truths.
-        print("ground true",batch_label) # [7, 2, 1, 0, 4]
-        print("ground true",batch_label.shape) # [7, 2, 1, 0, 4]``
+        
+        mean_absolute_error_list = np.zeros(predictResult.shape)
+        total_mean_absolute_error_list = np.zeros(predictResult.shape[0])
+        
+        anomaly_threshold = 0.7
+        anomaly_list = [ [] for i in range(predictResult.shape[1])]
+        total_anomaly_list = []
+        for rowIndex in range(predictResult.shape[0]):
+            sum =0
+            for dimIndex in range(predictResult.shape[1]):
+                curValue =abs(predictResult[rowIndex,dimIndex] - batch_label[rowIndex,dimIndex])
+                mean_absolute_error_list[rowIndex,dimIndex] =curValue 
+                sum+=(curValue - mean[dimIndex])/std[dimIndex]
+                if (curValue-mean[dimIndex])/std[dimIndex] > anomaly_threshold:
+                    anomaly_list[dimIndex].append((rowIndex,curValue))
+            total_mean_absolute_error_list[rowIndex] = (sum/predictResult.shape[1])
+            if total_mean_absolute_error_list[rowIndex] > anomaly_threshold:
+                total_anomaly_list.append((rowIndex,total_mean_absolute_error_list[rowIndex]))
 
         
-        raw_seq_1 = self.raw_seq[:,0]
-        raw_seq_2 = self.raw_seq[:,1]
+        with open(self.result_save_path+"anomaly_list.txt","w") as f:
+            f.write("anomaly_list:\n")
+            for dimIndex in range(self.n_features):
+                f.write("dim:"+str(dimIndex)+" ")
+                f.write(' '.join('{},{:.2f}'.format(x[0],x[1]) for x in anomaly_list[dimIndex]))
+                f.write("\n")
+
+            f.write("total_anomaly_list:\n")
+            f.write(' '.join('{},{:.2f}'.format(x[0],x[1]) for x in total_anomaly_list))
+
+        
+        print("shapePredictResult:",predictResult.shape)
+
+        print("mean_absolute_erro_list shape:",mean_absolute_error_list.shape)
+        print("total_mean_absolute_erro_list shape:",total_mean_absolute_error_list.shape)
+        print("mean_absolute_erro_list:",mean_absolute_error_list)
+        print("total_mean_absolute_erro_list:",total_mean_absolute_error_list)
+
+        for index in range(self.raw_seq.shape[1]):
+            plt.figure(figsize=(100,10))
+            plt.plot(batch_label[:,index])
+            plt.plot(predictResult[:,index])
+            plt.plot(mean_absolute_error_list[:,index],'r')
+            plt.title('dimension_'+str(index))
+            plt.ylabel('value')
+            plt.xlabel('time')
+            plt.xticks([item[0] for item in anomaly_list[index]])
+            plt.legend(['target','predict','error'], loc='upper right')
+            plt.savefig("result/"+self.dataPath.split('/')[-2]+"/test_dim_"+str(index)+".png")
+
+        ## total mean absolute error fig
         plt.figure(figsize=(100,10))
-        
-        plt.plot(batch_label[:,0])
-        plt.plot(batch_label[:,1])
-        plt.plot(predictResult[:,0])
-        plt.plot(predictResult[:,1])
-        plt.title('sinewave')
+        plt.plot(total_mean_absolute_error_list,'r')
+        plt.title("total_mean_absolute_error")
         plt.ylabel('value')
         plt.xlabel('time')
-        plt.legend(['label_dim0','label_dim1','predict_dim0','predict_dim1'], loc='upper right')
-        plt.savefig("result/testResult.png")
-
-
+        plt.xticks([item[0] for item in total_anomaly_list])
+        plt.legend(['error'], loc='upper right')
+        plt.savefig("result/"+self.dataPath.split('/')[-2]+"/test_total_mean_absolute_error.png")
 
 
     '''

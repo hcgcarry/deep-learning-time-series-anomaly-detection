@@ -1,2 +1,1 @@
-rm result/*
-rm model/*
+find result/ -name "*.png" | xargs rm 

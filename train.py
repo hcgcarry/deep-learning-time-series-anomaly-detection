@@ -4,6 +4,7 @@
 # 3. Computation cost calculation
 # 4. Warnings / Errors?
 
+import os
 from util import split_sequence
 from tensorflow import keras
 from tensorflow.keras import optimizers
@@ -22,10 +23,11 @@ from keras.layers import Dense, Conv1D, Flatten, Activation, MaxPooling1D, Dropo
 
 """Generate model for predictor"""
 class trainModel:
-    def __init__(self,w ,p_w,n_features,kernel_size,num_filt_1,
+    def __init__(self,dataPath,w ,p_w,n_features,kernel_size,num_filt_1,
         num_filt_2,num_nrn_dl,num_nrn_ol,conv_strides ,
         pool_size_1,pool_size_2,pool_strides_1,pool_strides_2,epochs,dropout_rate,learning_rate,anm_det_thr ):
         """Hyperparameters"""
+        self.dataPath = dataPath
         self.w = w 
         self.p_w = p_w
         self.n_features = n_features           # Univariate time series
@@ -50,6 +52,7 @@ class trainModel:
 
 
     def run(self):
+        #self.loadData('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
         self.loadData()
         self.buildModel()
         self.train()
@@ -66,22 +69,28 @@ class trainModel:
         self.model.save_weights('model/sinwave_DeepAnT_1.h5')  
     def loadData(self):
         """Data loading"""
-        df_sine = pd.read_csv('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
+        df= pd.read_csv(self.dataPath)
         # define input sequence
-        raw_seq_1 = list(df_sine['sinewave'])
-        raw_seq_2 = list(df_sine['sinewave'])
+        '''
+        raw_seq_1 = list(df['sinewave'])
+        raw_seq_2 = list(df['sinewave'])
         for i in range(len(raw_seq_2)):
             raw_seq_2[(i+777)%len(raw_seq_2)]= raw_seq_1[i]
         raw_seq = np.stack((raw_seq_1,raw_seq_2),axis=1)
+        with open("wavesine.csv","w") as f:
+            for index in range(len(raw_seq)):
+                print(raw_seq[index,0],",",raw_seq[index,1],file=f)
+        '''
+        raw_seq= df.to_numpy()
 
-        plt.figure(figsize=(100,10))
-        plt.plot(raw_seq_1)
-        plt.plot(raw_seq_2)
-        plt.title('sinewave')
-        plt.ylabel('value')
-        plt.xlabel('time')
-        plt.legend(['input_seq','shifted_input_seq'], loc='upper right')
-        plt.savefig("result/traincase.png")
+        for index in range(raw_seq.shape[1]):
+            plt.figure(figsize=(100,10))
+            plt.plot(raw_seq[:,index])
+            plt.title('dimension_'+str(index))
+            plt.ylabel('value')
+            plt.xlabel('time')
+            plt.legend(['target'], loc='upper right')
+            plt.savefig("result/"+self.dataPath.split('/')[-2]+"/train_dim_"+str(index)+".png")
 
         # split into samples
         self.batch_sample, self.batch_label = split_sequence(raw_seq,self.w)
@@ -90,12 +99,10 @@ class trainModel:
 
         # need to convert batch into 3D tensor of the form [batch_size, input_seq_len, n_features]
         # 一個 batch 是所有的 windows
-        print("batch_sample",self.batch_sample)
-        print("batch_sample shape ",self.batch_sample.shape)
         self.batch_sample = self.batch_sample.reshape((self.batch_sample.shape[0], self.batch_sample.shape[1], self.n_features))
-        print("batch_sample shape",self.batch_sample.shape)
-        print("batch_label shape",self.batch_label.shape)
-        print("batch_label",self.batch_label)
+        # print("batch_sample shape",self.batch_sample.shape)
+        # print("batch_label shape",self.batch_label.shape)
+        # print("batch_label",self.batch_label)
     def buildModel(self):
         self.model = Sequential()
 
