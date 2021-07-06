@@ -56,6 +56,11 @@ class trainModel:
         self.loadData()
         self.buildModel()
         self.train()
+    def runPredictMultiStep(self):
+        #self.loadData('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
+        self.loadData()
+        self.buildModelMultiStep()
+        self.train()
 
     def train(self):
 
@@ -66,7 +71,7 @@ class trainModel:
 
 
         # save it to disk so we can load it back up anytime
-        self.model.save_weights('model/sinwave_DeepAnT_1.h5')  
+        self.model.save_weights('model/model_predictWitdh_'+str(self.p_w)+'.h5')
     def loadData(self):
         """Data loading"""
         df= pd.read_csv(self.dataPath)
@@ -93,7 +98,13 @@ class trainModel:
             plt.savefig("result/"+self.dataPath.split('/')[-2]+"/train_dim_"+str(index)+".png")
 
         # split into samples
-        self.batch_sample, self.batch_label = split_sequence(raw_seq,self.w)
+        self.batch_sample, self.batch_label = split_sequence(raw_seq,self.w,self.p_w)
+
+        print("batch_label shape",self.batch_label.shape)
+        print("batch_label ",self.batch_label)
+        self.batch_label = array([ item.flatten() for item in self.batch_label])
+        print("batch_label shape",self.batch_label.shape)
+        print("batch_label ",self.batch_label)
 
         # 2. reshape from [samples, timesteps] into [samples, timesteps, features]
 
@@ -103,6 +114,85 @@ class trainModel:
         # print("batch_sample shape",self.batch_sample.shape)
         # print("batch_label shape",self.batch_label.shape)
         # print("batch_label",self.batch_label)
+    def buildModelMultiStep(self):
+        self.model = Sequential()
+
+        # Convolutional Layer #1
+        # Computes 32 features using a 1D filter(kernel) of with w with ReLU activation. 
+        # Padding is added to preserve width.
+        # Input Tensor Shape: [batch_size, w, 1] ,batch_size = len(batch_sample)
+        # Output Tensor Shape: [batch_size, w, num_filt_1] (num_filt_1 = 32 feature vectors)
+        self.model.add(Conv1D(filters=self.num_filt_1,
+                        kernel_size=self.kernel_size,
+                        strides=self.conv_strides,
+                        padding='valid',
+                        activation='relu',
+                        input_shape=(self.w, self.n_features)))
+
+        # Pooling Layer #1
+        # First max pooling layer with a filter of length 2 and stride of 2
+        # Input Tensor Shape: [batch_size, w, num_filt_1]
+        # Output Tensor Shape: [batch_size, 0.5 * w, num_filt_1]
+
+        self.model.add(MaxPooling1D(pool_size=self.pool_size_1)) 
+                            #  strides=pool_strides_1, 
+                            #  padding='valid'))
+
+        # Convolutional Layer #2
+        # Computes 64 features using a 5x5 filter.
+        # Padding is added to preserve width and height.
+        # Input Tensor Shape: [batch_size, 0.5 * w, 32]
+        # Output Tensor Shape: [batch_size, 0.5 * w, num_filt_1 * num_filt_2]
+        self.model.add(Conv1D(filters=self.num_filt_2,
+                        kernel_size=self.kernel_size,
+                        strides=self.conv_strides,
+                        padding='valid',
+                        activation='relu'))
+
+        # Max Pooling Layer #2
+        # Second max pooling layer with a 2x2 filter and stride of 2
+        # Input Tensor Shape: [batch_size, 0.5 * w, num_filt_1 * num_filt_2]
+        # Output Tensor Shape: [batch_size, 0.25 * w, num_filt_1 * num_filt_2]
+        self.model.add(MaxPooling1D(pool_size=self.pool_size_2))
+                            #  strides=pool_strides_2, 
+                            #  padding='valid'
+                
+        # Flatten tensor into a batch of vectors
+        # Input Tensor Shape: [batch_size, 0.25 * w, num_filt_1 * num_filt_2]
+        # Output Tensor Shape: [batch_size, 0.25 * w * num_filt_1 * num_filt_2]
+        self.model.add(Flatten())
+
+        # Dense Layer (Output layer)
+        # Densely connected layer with 1024 neurons
+        # Input Tensor Shape: [batch_size, 0.25 * w * num_filt_1 * num_filt_2]
+        # Output Tensor Shape: [batch_size, 1024]
+        self.model.add(Dense(units=self.num_nrn_dl, activation='relu'))  
+
+        # Dropout
+        # Prevents overfitting in deep neural networks
+        self.model.add(Dropout(self.dropout_rate))
+
+        # Output layer
+        # Input Tensor Shape: [batch_size, 1024]
+        # Output Tensor Shape: [batch_size, p_w]
+        self.model.add(Dense(units=self.n_features*self.p_w))
+
+        # Summarize model structure
+        self.model.summary()
+
+        '''configure model'''
+        self.model.compile(optimizer='adam', 
+                    loss='mean_absolute_error')
+
+        # sgd = keras.optimizers.SGD(lr=learning_rate, 
+        #                          decay=1e-6, 
+        #                          momentum=0.9, 
+        #                          nesterov=True)
+        # model.compile(optimizer='sgd', 
+        #               loss='mean_absolute_error', 
+        #               metrics=['accuracy'])
+
+
     def buildModel(self):
         self.model = Sequential()
 
