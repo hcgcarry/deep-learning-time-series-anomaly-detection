@@ -5,7 +5,7 @@
 # 4. Warnings / Errors?
 
 import os
-from util import split_sequence
+from util import split_sequence_multiStep
 from tensorflow import keras
 from tensorflow.keras import optimizers
 from tensorflow.keras.optimizers import schedules
@@ -51,11 +51,6 @@ class trainModel:
 
 
 
-    def run(self):
-        #self.loadData('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
-        self.loadData()
-        self.buildModel()
-        self.train()
     def runPredictMultiStep(self):
         #self.loadData('https://raw.githubusercontent.com/swlee23/Deep-Learning-Time-Series-Anomaly-Detection/master/data/sinewave.csv')
         self.loadData()
@@ -75,19 +70,7 @@ class trainModel:
     def loadData(self):
         """Data loading"""
         df= pd.read_csv(self.dataPath)
-        # define input sequence
-        '''
-        raw_seq_1 = list(df['sinewave'])
-        raw_seq_2 = list(df['sinewave'])
-        for i in range(len(raw_seq_2)):
-            raw_seq_2[(i+777)%len(raw_seq_2)]= raw_seq_1[i]
-        raw_seq = np.stack((raw_seq_1,raw_seq_2),axis=1)
-        with open("wavesine.csv","w") as f:
-            for index in range(len(raw_seq)):
-                print(raw_seq[index,0],",",raw_seq[index,1],file=f)
-        '''
         raw_seq= df.to_numpy()
-
         for index in range(raw_seq.shape[1]):
             plt.figure(figsize=(100,10))
             plt.plot(raw_seq[:,index])
@@ -98,22 +81,13 @@ class trainModel:
             plt.savefig("result/"+self.dataPath.split('/')[-2]+"/train_dim_"+str(index)+".png")
 
         # split into samples
-        self.batch_sample, self.batch_label = split_sequence(raw_seq,self.w,self.p_w)
+        self.batch_sample, self.batch_label = split_sequence_multiStep(raw_seq,self.w,self.p_w,self.n_features)
 
-        print("batch_label shape",self.batch_label.shape)
-        print("batch_label ",self.batch_label)
-        self.batch_label = array([ item.flatten() for item in self.batch_label])
-        print("batch_label shape",self.batch_label.shape)
-        print("batch_label ",self.batch_label)
-
-        # 2. reshape from [samples, timesteps] into [samples, timesteps, features]
-
-        # need to convert batch into 3D tensor of the form [batch_size, input_seq_len, n_features]
-        # 一個 batch 是所有的 windows
-        self.batch_sample = self.batch_sample.reshape((self.batch_sample.shape[0], self.batch_sample.shape[1], self.n_features))
-        # print("batch_sample shape",self.batch_sample.shape)
-        # print("batch_label shape",self.batch_label.shape)
-        # print("batch_label",self.batch_label)
+        print("batch_sample.shape",self.batch_sample.shape)
+        print("batch_sample[0]",self.batch_sample[:5])
+        print("batch_label.shape",self.batch_label.shape)
+        print("batch_label[0]",self.batch_label[:5])
+    
     def buildModelMultiStep(self):
         self.model = Sequential()
 

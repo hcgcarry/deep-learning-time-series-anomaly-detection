@@ -1,5 +1,4 @@
 
-from util import split_sequence
 from tensorflow import keras
 from tensorflow.keras import optimizers
 from tensorflow.keras.optimizers import schedules
@@ -30,7 +29,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1" #model will be trained on GPU 1
 dataPath = "data/AirQualityUCI/preprocessAir.csv"
 n_features = 13 # Univariate time series
 w = 30 
-p_w = 10# Prediction window (number of time stampes required to be 
+p_w = 1# Prediction window (number of time stampes required to be 
 print("dataPath ",dataPath)
 
                          # i.e., filter(kernel) size       
@@ -61,11 +60,9 @@ else:
         testingObj = testing(dataPath,w ,p_w,n_features,kernel_size,num_filt_1,
         num_filt_2,num_nrn_dl,num_nrn_ol,conv_strides ,
         pool_size_1,pool_size_2,pool_strides_1,pool_strides_2,epochs,dropout_rate,learning_rate,anm_det_thr )
-        #testingObj.run()
         testingObj. runPredictMultiStep()
     else:
         trainModelObj = trainModel(dataPath,w ,p_w,n_features,kernel_size,num_filt_1,
         num_filt_2,num_nrn_dl,num_nrn_ol,conv_strides ,
         pool_size_1,pool_size_2,pool_strides_1,pool_strides_2,epochs,dropout_rate,learning_rate,anm_det_thr )
-        #trainModelObj.run()
         trainModelObj. runPredictMultiStep()
